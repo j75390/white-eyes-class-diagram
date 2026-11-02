@@ -1,0 +1,56 @@
+<title>클래스 다이어그램 뷰어</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: top tab bar, full-height pan/zoom stage below */
+:root{--bg:#f4f6fd;--fg:#363636;--mute:#6e7380;--line:#d9e0f3;--card:#fff;--accent:#4871ef;--accent-fg:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161d;--fg:#e8eaf2;--mute:#9aa1b4;--line:#2c3040;--card:#1d2029;--accent:#7b9bff;--accent-fg:#10131c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14161d;--fg:#e8eaf2;--mute:#9aa1b4;--line:#2c3040;--card:#1d2029;--accent:#7b9bff;--accent-fg:#10131c;color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;display:flex;flex-direction:column;padding-block:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding-block:12px}
+h1{font-size:18px;margin:0 8px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:8px}
+nav button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:7px 14px;border-radius:8px;cursor:pointer}
+nav button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{margin-left:auto;color:var(--mute);font-size:13px}
+#stage{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:16px;cursor:grab;touch-action:none}
+#stage.drag{cursor:grabbing}
+#img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;user-select:none;-webkit-user-drag:none}
+.tools{position:absolute;right:10px;bottom:10px;display:flex;gap:6px}
+.tools button{font:inherit;width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+</style>
+<header>
+  <h1>클래스 다이어그램</h1>
+  <nav id="tabs"></nav>
+  <span class="hint">휠: 확대·축소 / 끌기: 이동 / 더블클릭: 전체 보기</span>
+</header>
+<div id="stage">
+  <img id="img" alt="" draggable="false">
+  <div class="tools"><button id="zi" aria-label="확대">+</button><button id="zo" aria-label="축소">−</button><button id="fit" aria-label="전체 보기">⤢</button></div>
+</div>
+<script>
+const VIEWS=[["class","클래스 다이어그램"],["flask","flask 구조"]];
+const stage=document.getElementById("stage"),img=document.getElementById("img"),tabs=document.getElementById("tabs");
+let s=1,x=0,y=0,cur="class";
+function touch(){moved=true}
+function apply(){img.style.transform="translate("+x+"px,"+y+"px) scale("+s+")"}
+function fit(){moved=false;const w=img.naturalWidth,h=img.naturalHeight,W=stage.clientWidth,H=stage.clientHeight;if(!w)return;s=Math.min(W/w,H/h)*.96;x=(W-w*s)/2;y=(H-h*s)/2;apply()}
+function zoom(f,cx,cy){touch();const n=Math.max(.05,Math.min(8,s*f));x=cx-(cx-x)*n/s;y=cy-(cy-y)*n/s;s=n;apply()}
+function show(k){cur=k;const v=VIEWS.find(a=>a[0]===k)||VIEWS[0];cur=v[0];img.alt=v[1];img.src=cur+".png";[...tabs.children].forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===cur))}
+VIEWS.forEach(([k,n])=>{const b=document.createElement("button");b.textContent=n;b.dataset.k=k;b.onclick=()=>{location.hash=k};tabs.appendChild(b)});
+img.onload=()=>{moved=false;fit()};
+window.addEventListener("hashchange",()=>show(location.hash.slice(1)));
+let moved=false;new ResizeObserver(()=>{if(!moved)fit()}).observe(stage);
+stage.addEventListener("wheel",e=>{e.preventDefault();const r=stage.getBoundingClientRect();zoom(e.deltaY<0?1.15:1/1.15,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+let drag=null;const pts=new Map();let pd=0;
+stage.addEventListener("pointerdown",e=>{if(e.target.closest(".tools"))return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);drag=[e.clientX,e.clientY,x,y];stage.classList.add("drag");if(pts.size===2){const[a,b]=[...pts.values()];pd=Math.hypot(a[0]-b[0],a[1]-b[1])}});
+stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const[a,b]=[...pts.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]),r=stage.getBoundingClientRect();if(pd)zoom(d/pd,(a[0]+b[0])/2-r.left,(a[1]+b[1])/2-r.top);pd=d}else if(drag){touch();x=drag[2]+e.clientX-drag[0];y=drag[3]+e.clientY-drag[1];apply()}});
+const up=e=>{pts.delete(e.pointerId);pd=0;if(pts.size===1){const[p]=[...pts.values()];drag=[p[0],p[1],x,y]}else{drag=null;stage.classList.remove("drag")}};
+stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
+stage.addEventListener("dblclick",fit);
+document.getElementById("fit").onclick=fit;
+document.getElementById("zi").onclick=()=>zoom(1.4,stage.clientWidth/2,stage.clientHeight/2);
+document.getElementById("zo").onclick=()=>zoom(1/1.4,stage.clientWidth/2,stage.clientHeight/2);
+show(location.hash.slice(1));
+</script>
